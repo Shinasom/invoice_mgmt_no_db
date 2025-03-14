@@ -1,0 +1,17 @@
+pytesseract
+argparse
+opencv-python
+pandas
+seaborn
+matplotlib
+numpy
+pillow
+nltk
+pdf2image
+streamlit
+google-generativeai
+fpdf
+cloudinary
+psycopg2
+
+
