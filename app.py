@@ -29,7 +29,7 @@ if "invoice_images" not in st.session_state:
 
 # Load Google Vision credentials
 if "google" in st.secrets and "credentials" in st.secrets["google"]:
-    credentials_info = json.loads(st.secrets["google"]["credentials"])
+    credentials_info = st.secrets["google"]["credentials"]
     credentials = service_account.Credentials.from_service_account_info(credentials_info)
     client = vision.ImageAnnotatorClient(credentials=credentials)
 else:
