@@ -27,11 +27,16 @@ if "invoices" not in st.session_state:
 if "invoice_images" not in st.session_state:
     st.session_state.invoice_images = {}
 
-# Load Google Vision credentials
-if "google" in st.secrets and "credentials" in st.secrets["google"]:
-    credentials_info = st.secrets["google"]["credentials"]
+f "google" in st.secrets and "credentials" in st.secrets["google"]:
+    # Convert the stored JSON string into a Python dictionary
+    credentials_info = json.loads(st.secrets["google"]["credentials"])
+    
+    # Initialize Google Cloud credentials
     credentials = service_account.Credentials.from_service_account_info(credentials_info)
+    
+    # Initialize the Vision API client
     client = vision.ImageAnnotatorClient(credentials=credentials)
+
 else:
     st.error("Google Vision API credentials not found. Please add them to Streamlit secrets.")
     st.stop()
