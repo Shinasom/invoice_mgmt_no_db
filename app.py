@@ -27,6 +27,12 @@ if "invoices" not in st.session_state:
 if "invoice_images" not in st.session_state:
     st.session_state.invoice_images = {}
 
+import streamlit as st
+import json
+from google.cloud import vision
+from google.oauth2 import service_account
+
+# Load Google Vision credentials
 if "google" in st.secrets and "credentials" in st.secrets["google"]:
     # Convert the stored JSON string into a Python dictionary
     credentials_info = json.loads(st.secrets["google"]["credentials"])
@@ -41,9 +47,6 @@ else:
     st.error("Google Vision API credentials not found. Please add them to Streamlit secrets.")
     st.stop()
 
-else:
-    st.error("Google Vision API credentials not found. Please add them to Streamlit secrets.")
-    st.stop()
 
 
 def extract_text(image):
