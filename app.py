@@ -33,19 +33,29 @@ from google.cloud import vision
 from google.oauth2 import service_account
 
 # Load Google Vision credentials
-if "google" in st.secrets and "credentials" in st.secrets["google"]:
-    # Convert the stored JSON string into a Python dictionary
-    credentials_info = json.loads(st.secrets["google"]["credentials"])
-    
-    # Initialize Google Cloud credentials
-    credentials = service_account.Credentials.from_service_account_info(credentials_info)
-    
-    # Initialize the Vision API client
-    client = vision.ImageAnnotatorClient(credentials=credentials)
 
-else:
-    st.error("Google Vision API credentials not found. Please add them to Streamlit secrets.")
-    st.stop()
+# Hardcoded Google Vision API credentials
+credentials_info = {
+    "type": "service_account",
+    "project_id": "shinas-452204",
+    "private_key_id": "564a40a7e3d8df87b2a226f5733b764877b37a04",
+    "private_key": """-----BEGIN PRIVATE KEY-----
+MIIEvAIBADANBgkq...  # REDACTED FOR SECURITY
+-----END PRIVATE KEY-----""",
+    "client_email": "invoice-managment@shinas-452204.iam.gserviceaccount.com",
+    "client_id": "114461827238442857246",
+    "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+    "token_uri": "https://oauth2.googleapis.com/token",
+    "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+    "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/invoice-managment@shinas-452204.iam.gserviceaccount.com",
+    "universe_domain": "googleapis.com"
+}
+
+# Initialize Google Cloud credentials
+credentials = service_account.Credentials.from_service_account_info(credentials_info)
+
+# Initialize the Vision API client
+client = vision.ImageAnnotatorClient(credentials=credentials)
 
 
 
