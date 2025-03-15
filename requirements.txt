@@ -11,3 +11,6 @@ google-auth-oauthlib
 fpdf
 numpy
 requests
+pandas
+matplotlib
+seaborn
