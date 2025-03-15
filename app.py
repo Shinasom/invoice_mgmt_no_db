@@ -11,12 +11,9 @@ import google.generativeai as genai
 from google.cloud import vision
 from google.oauth2 import service_account
 
-# Configure Gemini API Key
-if "gemini" in st.secrets and "api_key" in st.secrets["gemini"]:
-    genai.configure(api_key=st.secrets["gemini"]["api_key"])
-else:
-    st.error("Gemini API key not found. Please add it to Streamlit secrets.")
-    st.stop()
+genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+credentials = service_account.Credentials.from_service_account_info(st.secrets["GOOGLE_CREDENTIALS"])
+client = vision.ImageAnnotatorClient(credentials=credentials)
 
 # Required columns
 REQUIRED_COLUMNS = ["store_name", "date", "bill_no", "total_amount", "extracted_text"]
@@ -26,37 +23,6 @@ if "invoices" not in st.session_state:
     st.session_state.invoices = []
 if "invoice_images" not in st.session_state:
     st.session_state.invoice_images = {}
-
-import streamlit as st
-import json
-from google.cloud import vision
-from google.oauth2 import service_account
-
-# Load Google Vision credentials
-
-# Hardcoded Google Vision API credentials
-credentials_info = {
-    "type": "service_account",
-    "project_id": "shinas-452204",
-    "private_key_id": "564a40a7e3d8df87b2a226f5733b764877b37a04",
-    "private_key": """-----BEGIN PRIVATE KEY-----
-MIIEvAIBADANBgkq...  # REDACTED FOR SECURITY
------END PRIVATE KEY-----""",
-    "client_email": "invoice-managment@shinas-452204.iam.gserviceaccount.com",
-    "client_id": "114461827238442857246",
-    "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-    "token_uri": "https://oauth2.googleapis.com/token",
-    "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
-    "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/invoice-managment@shinas-452204.iam.gserviceaccount.com",
-    "universe_domain": "googleapis.com"
-}
-
-# Initialize Google Cloud credentials
-credentials = service_account.Credentials.from_service_account_info(credentials_info)
-
-# Initialize the Vision API client
-client = vision.ImageAnnotatorClient(credentials=credentials)
-
 
 
 def extract_text(image):
@@ -79,13 +45,22 @@ def extract_entities(text):
     - Date
     - Bill Number
     - Total Amount
-    Provide the response strictly in JSON format with keys: "store_name", "date", "bill_no", "total_amount".
+    
+    Provide ONLY a JSON response with these keys: "store_name", "date", "bill_no", "total_amount".
+    Do NOT include any additional text, explanation, or formatting outside of the JSON object.
+
     Invoice text:
     {text}
     """
+
     response = model.generate_content(prompt)
+
+    # Ensure response is valid JSON
     try:
-        return json.loads(response.text.strip())
+        json_text = response.text.strip()
+        if json_text.startswith("```json"):  # Handle Markdown JSON block
+            json_text = json_text[7:-3].strip()
+        return json.loads(json_text)
     except json.JSONDecodeError:
         return {"error": "Failed to parse JSON. Raw output: " + response.text}
 
@@ -160,9 +135,11 @@ def generate_invoice_pdf():
     with open(pdf_output_path, "rb") as pdf_file:
         st.download_button("📄 Download Invoice Summary PDF", data=pdf_file, file_name="invoices_summary.pdf", mime="application/pdf")
 
+
 # Streamlit UI
 st.title("Invoice OCR Scanner")
 uploaded_file = st.file_uploader("Upload Invoice Image or PDF", type=["png", "jpg", "jpeg", "pdf"])
+
 if uploaded_file:
     file_type = uploaded_file.name.split(".")[-1].lower()
     image = Image.open(uploaded_file) if file_type in ["png", "jpg", "jpeg"] else None
@@ -170,16 +147,20 @@ if uploaded_file:
     invoice_data = extract_entities(extracted_text)
     invoice_data["extracted_text"] = extracted_text
     st.json(invoice_data)
+
     duplicate_id, score = check_duplicate(extracted_text)
     if duplicate_id:
         st.warning(f"⚠ Duplicate Invoice Detected! (ID: {duplicate_id}, Similarity Score: {score}%)")
     else:
         saved_id = save_invoice(invoice_data, image)
         st.success(f"✅ Invoice saved with ID: {saved_id}.")
+
 if st.button("Sum of All Invoices"):
     st.success(f"💰 Total sum of invoices: ₹{calculate_total_amount():.2f}")
+
 if st.button("Clear All Data"):
     clear_data()
     st.rerun()
+
 if st.button("Generate Invoice Summary PDF"):
     generate_invoice_pdf()
