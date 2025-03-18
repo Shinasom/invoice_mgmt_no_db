@@ -16,35 +16,37 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 
+# Configure APIs and credentials
 genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
 credentials = service_account.Credentials.from_service_account_info(st.secrets["GOOGLE_CREDENTIALS"])
 client = vision.ImageAnnotatorClient(credentials=credentials)
 
-# Required columns
+# Required columns (for clarity)
 REQUIRED_COLUMNS = ["store_name", "date", "bill_no", "total_amount", "extracted_text"]
 
-# Initialize session state
+# Initialize session state for invoices and invoice images
 if "invoices" not in st.session_state:
     st.session_state.invoices = []
 if "invoice_images" not in st.session_state:
     st.session_state.invoice_images = {}
 
+# -----------------------
+# Helper Functions
+# -----------------------
 
 def extract_text(image):
     """Extract text using Google Vision API."""
     img_byte_arr = io.BytesIO()
     image.save(img_byte_arr, format='PNG')
     img_byte_arr = img_byte_arr.getvalue()
-    image = vision.Image(content=img_byte_arr)
-    response = client.text_detection(image=image)
+    image_for_api = vision.Image(content=img_byte_arr)
+    response = client.text_detection(image=image_for_api)
     texts = response.text_annotations
     return texts[0].description if texts else ""
-
 
 def extract_entities(text):
     """Extract structured invoice data including category prediction using Gemini API."""
     model = genai.GenerativeModel("gemini-1.5-flash")
-    
     prompt = f"""
     Extract the following details from this invoice text:
     - Store Name
@@ -66,17 +68,13 @@ def extract_entities(text):
     Invoice text:
     {text}
     """
-
     response = model.generate_content(prompt)
-
-    # Extract JSON safely
     try:
         json_text = response.text.strip()
         json_match = re.search(r'\{.*\}', json_text, re.DOTALL)
         if json_match:
             json_text = json_match.group(0)
         invoice_data = json.loads(json_text)
-        
         return invoice_data
     except json.JSONDecodeError:
         return {
@@ -88,75 +86,59 @@ def extract_entities(text):
         }
 
 def check_duplicate(extracted_text, threshold=90):
-     """Compare extracted text with session state invoices for duplicate detection."""
-     for stored_invoice in st.session_state.invoices:
-         similarity_score = fuzz.ratio(extracted_text, stored_invoice["extracted_text"])
-         if similarity_score >= threshold:
-             return stored_invoice["id"], similarity_score
-     
-     return None, 0
- 
-def save_to_session_state(invoice_data, image):
-     """Save invoice details and image to session state."""
-     invoice_id = len(st.session_state.invoices) + 1  # Use the next available ID
-     invoice_data["id"] = invoice_id
-     st.session_state.invoices.append(invoice_data)
-     
-     # Store the image directly in session state
-     st.session_state.invoice_images = st.session_state.get('invoice_images', {})
-     st.session_state.invoice_images[invoice_id] = image
-     return invoice_id
- 
-def process_pdf(uploaded_file):
-     """Convert PDF pages to images and extract text."""
-     images = convert_from_bytes(uploaded_file.read())
-     extracted_text = extract_text(images[0])
-     return extracted_text, images[0]
- 
-def calculate_total_amount():
-     """Calculate the sum of total_amount from session_state invoices."""
-     total = sum(float(invoice["total_amount"]) for invoice in st.session_state.invoices if invoice["total_amount"])
-     return total
- 
- 
-def clear_session_state_data():
-     """Clear all invoices and images from session state."""
-     st.session_state.invoices.clear()
-     st.session_state.invoice_images.clear()
+    """Compare extracted text with session state invoices for duplicate detection."""
+    for stored_invoice in st.session_state.invoices:
+        stored_text = stored_invoice.get("extracted_text", "")
+        similarity_score = fuzz.ratio(extracted_text, stored_text)
+        if similarity_score >= threshold:
+            return stored_invoice["id"], similarity_score
+    return None, 0
 
+def save_to_session_state(invoice_data, image):
+    """Save invoice details and image to session state."""
+    invoice_id = len(st.session_state.invoices) + 1  # Next available ID
+    invoice_data["id"] = invoice_id
+    st.session_state.invoices.append(invoice_data)
+    st.session_state.invoice_images[invoice_id] = image
+    return invoice_id
+
+def process_pdf(uploaded_file):
+    """Convert PDF pages to images and extract text."""
+    images = convert_from_bytes(uploaded_file.read())
+    extracted_text = extract_text(images[0])
+    return extracted_text, images[0]
+
+def calculate_total_amount():
+    """Calculate the sum of total_amount from session state invoices."""
+    total = sum(float(invoice.get("total_amount") or 0) for invoice in st.session_state.invoices)
+    return total
+
+def clear_session_state_data():
+    """Clear all invoices and images from session state."""
+    st.session_state.invoices.clear()
+    st.session_state.invoice_images.clear()
 
 def spending_trends():
-    # Convert session invoices to a DataFrame for easier manipulation
+    # Convert invoices to a DataFrame for visualization
     invoices_df = pd.DataFrame(st.session_state.invoices)
-
-    # Clean the date column (no format conversion, just removing ordinal suffixes)
     invoices_df['date'] = invoices_df['date'].astype(str).str.replace(r'\d+(st|nd|rd|th)', '', regex=True)
-
-    # Ensure 'total_amount' is numeric and handle errors
     invoices_df['total_amount'] = pd.to_numeric(invoices_df['total_amount'], errors='coerce')
-
-    # Remove rows where 'total_amount' is NaN after conversion
     invoices_df = invoices_df.dropna(subset=['total_amount'])
-
-    # Spending by Category (Pie chart)
+    
+    # Pie Chart: Spending by Category
     spending_by_category = invoices_df.groupby('category').agg({'total_amount': 'sum'}).reset_index()
-
-    # Group small categories into "Other" to improve readability
     threshold = spending_by_category['total_amount'].quantile(0.05)
     spending_by_category['category'] = spending_by_category['category'].apply(
-        lambda x: x if spending_by_category.loc[spending_by_category['category'] == x, 'total_amount'].values[0] >= threshold
-        else 'Other'
+        lambda x: x if spending_by_category.loc[spending_by_category['category'] == x, 'total_amount'].values[0] >= threshold else 'Other'
     )
     spending_by_category = spending_by_category.groupby('category').agg({'total_amount': 'sum'}).reset_index()
-
     plt.figure(figsize=(8, 6))
     plt.pie(spending_by_category['total_amount'], labels=spending_by_category['category'], autopct='%1.1f%%', startangle=140)
     plt.title("Spending by Category")
     st.pyplot(plt)
 
-    # Spending Trends Over Time (Line chart)
-    spending_by_date = invoices_df.groupby(invoices_df['date']).agg({'total_amount': 'sum'}).reset_index()
-
+    # Line Chart: Spending Trends Over Time
+    spending_by_date = invoices_df.groupby('date').agg({'total_amount': 'sum'}).reset_index()
     plt.figure(figsize=(10, 6))
     plt.plot(spending_by_date['date'], spending_by_date['total_amount'], marker='o')
     plt.title("Spending Trends Over Time")
@@ -166,9 +148,8 @@ def spending_trends():
     plt.grid(True)
     st.pyplot(plt)
 
-    # Spending by Store (Bar chart)
+    # Bar Chart: Spending by Store
     spending_by_store = invoices_df.groupby('store_name').agg({'total_amount': 'sum'}).reset_index()
-
     plt.figure(figsize=(10, 6))
     sns.barplot(x='store_name', y='total_amount', data=spending_by_store, palette='viridis')
     plt.title("Spending by Store")
@@ -176,83 +157,68 @@ def spending_trends():
     plt.ylabel("Total Amount (₹)")
     plt.xticks(rotation=45)
     st.pyplot(plt)
-
-    # Show a summary of total spending
+    
     total_spending = invoices_df['total_amount'].sum()
     st.subheader(f"Total Spending: ₹{total_spending:,.2f}")
 
-
 def generate_invoice_pdf():
-    """Generate a PDF with an invoice summary table on the first page and invoice images on subsequent pages."""
-    progress_bar = st.progress(0)  # Initialize progress bar
+    """Generate a PDF with invoice summaries and charts."""
+    progress_bar = st.progress(0)
     progress = 0
 
-    # Step 1: Upload Progress (30%)
+    # Step 1: Create PDF and add summary table
     progress_bar.progress(progress + 10)
-    time.sleep(0.5)  # Simulate processing time
-
+    time.sleep(0.5)
     pdf = FPDF()
     pdf.set_auto_page_break(auto=True, margin=15)
     pdf.add_page()
     pdf.set_font("Arial", style='B', size=14)
-
     pdf.cell(200, 10, "Invoice Summary", ln=True, align="C")
     pdf.ln(10)
-
-    total_sum = sum(float(invoice["total_amount"]) for invoice in st.session_state.invoices)
-
-    # Table Headers
+    total_sum = sum(float(invoice.get("total_amount") or 0) for invoice in st.session_state.invoices)
+    
     pdf.set_font("Arial", style='B', size=10)
-    col_widths = [20, 50, 30, 30, 30]  # Adjusted for category before total
+    col_widths = [20, 50, 30, 30, 30]
     headers = ["Bill ID", "Store Name", "Date", "Category", "Total Amount"]
-
     progress += 10
-    progress_bar.progress(progress + 10)  # 20% progress
+    progress_bar.progress(progress + 10)
     time.sleep(0.5)
-
-    # Step 2: Process Invoices (40%)
+    
+    # Table headers
     for i, header in enumerate(headers):
         pdf.cell(col_widths[i], 8, header, border=1, align="C")
     pdf.ln()
-
+    
     pdf.set_font("Arial", size=10)
-    for i, invoice in enumerate(st.session_state.invoices):
-        pdf.cell(col_widths[0], 8, str(invoice["id"]), border=1, align="C")
-        pdf.cell(col_widths[1], 8, invoice["store_name"], border=1)
-        pdf.cell(col_widths[2], 8, invoice["date"], border=1, align="C")
-        pdf.cell(col_widths[3], 8, invoice["category"], border=1, align="C")  # Category before total
-        pdf.cell(col_widths[4], 8, f"{float(invoice['total_amount']):.2f}", border=1, align="C")
+    for invoice in st.session_state.invoices:
+        pdf.cell(col_widths[0], 8, str(invoice.get("id", "N/A")), border=1, align="C")
+        pdf.cell(col_widths[1], 8, invoice.get("store_name", "N/A"), border=1)
+        pdf.cell(col_widths[2], 8, invoice.get("date", "N/A"), border=1, align="C")
+        pdf.cell(col_widths[3], 8, invoice.get("category", "N/A"), border=1, align="C")
+        pdf.cell(col_widths[4], 8, f"{float(invoice.get('total_amount') or 0):.2f}", border=1, align="C")
         pdf.ln()
-
-        progress += 5  # Increment progress
-        progress_bar.progress(progress)  
-
-    # Total sum row
+        progress += 5
+        progress_bar.progress(progress)
+    
     pdf.set_font("Arial", style='B', size=10)
     pdf.cell(sum(col_widths[:4]), 8, "Total Amount", border=1, align="R")
     pdf.cell(col_widths[4], 8, f"{total_sum:.2f}", border=1, align="C")
     pdf.ln(10)
-
-    # Step 3: Generate Spending Trends Charts (30%)
-    # Now, generate and add the charts to the second page of the PDF.
+    
+    # Step 2: Add Spending Trends Charts
     spending_trends()
-
-    # Convert 'total_amount' to numeric before performing aggregation
     invoice_df = pd.DataFrame(st.session_state.invoices)
     invoice_df['total_amount'] = pd.to_numeric(invoice_df['total_amount'], errors='coerce')
-
     spending_by_category = invoice_df.groupby('category').agg({'total_amount': 'sum'}).reset_index()
-
-    # Save the Spending by Category Pie chart
-    pie_chart_path = tempfile.mktemp(suffix=".png")
+    
+    pie_chart_path = tempfile.mkstemp(suffix=".png")[1]
     plt.figure(figsize=(8, 6))
     plt.pie(spending_by_category['total_amount'], labels=spending_by_category['category'], autopct='%1.1f%%', startangle=140)
     plt.title("Spending by Category")
     plt.savefig(pie_chart_path, format="png")
     plt.close()
-
-    # Save the Spending Trends Over Time Line chart
-    line_chart_path = tempfile.mktemp(suffix=".png")
+    
+    line_chart_path = tempfile.mkstemp(suffix=".png")[1]
     spending_by_date = invoice_df.groupby('date').agg({'total_amount': 'sum'}).reset_index()
     plt.figure(figsize=(10, 6))
     plt.plot(spending_by_date['date'], spending_by_date['total_amount'], marker='o')
@@ -263,9 +229,8 @@ def generate_invoice_pdf():
     plt.grid(True)
     plt.savefig(line_chart_path, format="png")
     plt.close()
-
-    # Save the Spending by Store Bar chart
-    bar_chart_path = tempfile.mktemp(suffix=".png")
+    
+    bar_chart_path = tempfile.mkstemp(suffix=".png")[1]
     spending_by_store = invoice_df.groupby('store_name').agg({'total_amount': 'sum'}).reset_index()
     plt.figure(figsize=(10, 6))
     sns.barplot(x='store_name', y='total_amount', data=spending_by_store, palette='viridis')
@@ -275,119 +240,181 @@ def generate_invoice_pdf():
     plt.xticks(rotation=45)
     plt.savefig(bar_chart_path, format="png")
     plt.close()
-
-    # Add charts to the second page of the PDF
+    
     pdf.add_page()
     pdf.set_font("Arial", style='B', size=14)
     pdf.cell(200, 10, "Spending Trends", ln=True, align="C")
     pdf.ln(10)
-
-    # Insert pie chart
     pdf.image(pie_chart_path, x=10, y=30, w=180)
-    pdf.ln(100)  # Adjust position for next chart
-
-    # Insert line chart
+    pdf.ln(100)
     pdf.image(line_chart_path, x=10, y=140, w=180)
     pdf.ln(100)
-
     pdf.add_page()
     pdf.set_font("Arial", style='B', size=14)
     pdf.image(bar_chart_path, x=10, y=30, w=180)
-
     progress += 10
     progress_bar.progress(progress)
-
-    # Step 4: Generate Invoice Images (30%)
+    
+    # Step 3: Add Invoice Images to the PDF
     for invoice_id, img in st.session_state.invoice_images.items():
         pdf.add_page()
         temp_path = os.path.join(tempfile.gettempdir(), f"invoice_{invoice_id}.png")
-        img.save(temp_path, format="PNG")  # Save image temporarily
-
+        img.save(temp_path, format="PNG")
         try:
             pdf.image(temp_path, x=10, y=10, w=180)
         finally:
-            os.remove(temp_path)  # Cleanup
-
+            os.remove(temp_path)
         progress += 10
         progress_bar.progress(progress)
-
-    # Step 5: Save and Offer PDF Download (Final 30%)
-    fd, pdf_path = tempfile.mkstemp(suffix=".pdf")  # Generate temp file path
-    os.close(fd)  # Close file descriptor
-    pdf.output(pdf_path)  # Save PDF
-
-    progress_bar.progress(100)  # Completed ✅
+    
+    # Step 4: Save PDF and provide download button
+    fd, pdf_path = tempfile.mkstemp(suffix=".pdf")
+    os.close(fd)
+    pdf.output(pdf_path)
+    progress_bar.progress(100)
     st.success("✅ Invoice Summary PDF generated successfully!")
-
-    # Use a unique key for the download button
+    
     with open(pdf_path, "rb") as pdf_file:
         st.download_button(
             label="📄 Download Invoice Summary PDF", 
             data=pdf_file, 
             file_name="invoices_summary.pdf", 
             mime="application/pdf",
-            key="download_invoice_summary"  # Unique key for the button
+            key="download_invoice_summary"
         )
-
-    # Cleanup: Remove file after user interaction
+    
     if os.path.exists(pdf_path):
         os.remove(pdf_path)
 
+def display_invoice_details(invoice_id, invoice_data):
+    # Apply fallbacks for every element
+    store_name   = invoice_data.get("store_name") or "N/A"
+    bill_no      = invoice_data.get("bill_no") or "N/A"
+    date_value   = invoice_data.get("date") or "N/A"
+    category     = invoice_data.get("category") or "N/A"
+    total_amount = invoice_data.get("total_amount") or 0
 
- 
- # Streamlit UI
+    details = {
+        "Field": ["Invoice ID", "Store Name", "Bill No", "Date", "Category", "Total Amount"],
+        "Value": [
+            invoice_id,
+            store_name,
+            bill_no,
+            date_value,
+            category,
+            f"₹{float(total_amount):.2f}"
+        ]
+    }
+    st.table(details)
+
+def proceed_callback():
+    invoice_data = extract_entities(st.session_state.duplicate_extracted_text)
+    invoice_data["extracted_text"] = st.session_state.duplicate_extracted_text
+    saved_id = save_to_session_state(invoice_data, st.session_state.duplicate_image)
+    st.session_state["saved_invoice_id"] = saved_id
+    st.session_state["saved_invoice_data"] = invoice_data
+    st.session_state["show_table"] = True
+    # Store the success message in session state
+    st.session_state["success_message"] = f"✅ Invoice Saved successfully! Invoice ID: {saved_id}"
+    # Clear the temporary duplicate data
+    del st.session_state.duplicate_extracted_text
+    del st.session_state.duplicate_image
+
+
+def file_upload_handler(uploaded_file):
+    """Handle file upload and invoice processing."""
+    if uploaded_file.type == "application/pdf":
+        extracted_text, image = process_pdf(uploaded_file)
+    else:
+        image = Image.open(uploaded_file)
+        extracted_text = extract_text(image)
+    
+    # Check for duplicate invoices
+    duplicate_id, similarity_score = check_duplicate(extracted_text)
+    if duplicate_id:
+        st.warning(f"⚠️ This invoice is similar to Invoice ID {duplicate_id} with a similarity score of {similarity_score}.")
+        
+        # Show both images side by side for comparison
+        col1, col2 = st.columns(2)
+        with col1:
+            st.image(st.session_state.invoice_images[duplicate_id], caption=f"Existing Invoice - ID: {duplicate_id}",  use_container_width=True)
+        with col2:
+             st.image(image, caption="New Uploaded Invoice",  use_container_width=True)
+            
+        
+        # Store duplicate data temporarily in session state
+        st.session_state.duplicate_extracted_text = extracted_text
+        st.session_state.duplicate_image = image
+        
+        # Use on_click callback to trigger proceed_callback when button is pressed
+        st.button("Proceed to Save Anyway", key="proceed_duplicate_button", on_click=proceed_callback)
+        return
+    
+    # Normal processing if no duplicate is found
+    invoice_data = extract_entities(extracted_text)
+    invoice_data["extracted_text"] = extracted_text
+    invoice_id = save_to_session_state(invoice_data, image)
+    st.session_state["saved_invoice_id"] = invoice_id
+    st.session_state["saved_invoice_data"] = invoice_data
+    st.session_state["show_table"] = True
+    st.session_state["success_message"] = f"✅ Invoice Saved successfully! Invoice ID: {invoice_id}"
+
+
+# -------------------------
+# Main Streamlit UI Section
+# -------------------------
 st.title("Invoice Management System")
- 
-uploaded_file = st.file_uploader("Upload Invoice Image or PDF", type=["png", "jpg", "jpeg", "pdf"])
- 
+
+# Create a container for the uploader widget
+if "file_upload_count" not in st.session_state:
+    st.session_state.file_upload_count = 0
+uploader_container = st.empty()
+
+uploaded_file = uploader_container.file_uploader(
+    "Upload Invoice Image or PDF", 
+    type=["png", "jpg", "jpeg", "pdf"],
+    key=f"uploaded_file_{st.session_state.file_upload_count}"
+)
+
 if uploaded_file:
+    file_upload_handler(uploaded_file)
+    st.session_state.file_upload_count += 1
+    uploader_container.empty()
+    uploader_container.file_uploader(
+        "Upload Invoice Image or PDF", 
+        type=["png", "jpg", "jpeg", "pdf"],
+        key=f"uploaded_file_{st.session_state.file_upload_count}"
+    )
 
+# Create a placeholder for the success message (positioned below the uploader)
+success_placeholder = st.empty()
+if st.session_state.get("success_message"):
+    with success_placeholder:
+        st.success(st.session_state["success_message"])
+    del st.session_state["success_message"]
 
-     
-     file_type = uploaded_file.name.split(".")[-1].lower()
- 
-     if file_type in ["png", "jpg", "jpeg"]:
-         image = Image.open(uploaded_file)
-         extracted_text = extract_text(image)
-     elif file_type == "pdf":
-         extracted_text, image = process_pdf(uploaded_file)
-     
-     invoice_data = extract_entities(extracted_text)
-     invoice_data["extracted_text"] = extracted_text
-     
-     st.subheader("Extracted Invoice Details")
-     st.json(invoice_data)
-     
-     duplicate_id, similarity_score = check_duplicate(extracted_text)
-     
-     if duplicate_id:
-         st.warning(f"⚠ Duplicate Invoice Detected! (ID: {duplicate_id}, Similarity Score: {similarity_score}%)")
-         existing_image = st.session_state.invoice_images[duplicate_id]
-         col1, col2 = st.columns(2)
-         with col1:
-             st.image(image, caption="New Uploaded Invoice", use_column_width=True)
-         with col2:
-             st.image(existing_image, caption="Existing Invoice", use_column_width=True)
-         
-         if st.button("Proceed to Save Anyway"):
-             saved_id = save_to_session_state(invoice_data, image)
-             st.success(f"Invoice saved with ID: {saved_id}.")
-     else:
-         saved_id = save_to_session_state(invoice_data, image)
-         st.success(f"✅ Invoice saved with ID: {saved_id}.")
- 
+# Create a placeholder BELOW the uploader container for the invoice details table
+table_placeholder = st.empty()
+if st.session_state.get("show_table", False):
+    with table_placeholder:
+        display_invoice_details(
+            st.session_state["saved_invoice_id"],
+            st.session_state["saved_invoice_data"]
+        )
+    st.session_state["show_table"] = False
+
+    
+# Additional UI buttons for other actions
 if st.button("Sum of All Invoices"):
-     total_sum = calculate_total_amount()
-     st.success(f"💰 Total sum of all invoices: ₹{total_sum:.2f}")
-
+    total_sum = calculate_total_amount()
+    st.success(f"💰 Total sum of all invoices: ₹{total_sum:.2f}")
 
 if st.button("Analyze Spending Trends"):
     spending_trends()
- 
+
 if st.button("Clear All Data (Invoices & Images)"):
-     clear_session_state_data()
-     st.success("All invoices and saved images have been deleted.")
-     st.rerun()
- 
+    clear_session_state_data()
+    st.success("All invoices and saved images have been deleted.")
+
 if st.button("Generate Invoice Summary PDF"):
-     generate_invoice_pdf()
+    generate_invoice_pdf()
