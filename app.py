@@ -45,7 +45,7 @@ def extract_text(image):
     return texts[0].description if texts else ""
 
 def extract_entities(text):
-    """Extract structured invoice data including category prediction using Gemini API."""
+    """Extract structured invoice data including GSTIN and category prediction using Gemini API."""
     model = genai.GenerativeModel("gemini-1.5-flash")
     prompt = f"""
     Extract the following details from this invoice text:
@@ -54,6 +54,7 @@ def extract_entities(text):
     - Bill Number
     - Total Amount
     - Category (choose from: Food, Travel, Office Supplies, Utilities, Others)
+    - GSTIN
 
     Use the following **keywords for category classification**:
     - **Food**: restaurant, cafe, grocery, food, beverage, bakery, supermarket
@@ -62,7 +63,7 @@ def extract_entities(text):
     - **Utilities**: electricity, water, internet, mobile bill, phone bill, broadband, gas
     - **Others**: (use this if no relevant category is found)
 
-    Provide ONLY a JSON response with these keys: "store_name", "date", "bill_no", "total_amount", "category".
+    Provide ONLY a JSON response with these keys: "store_name", "date", "bill_no", "total_amount", "category", "gstin".
     Do NOT include any additional text, explanation, or formatting outside of the JSON object.
 
     Invoice text:
@@ -82,8 +83,10 @@ def extract_entities(text):
             "date": "N/A",
             "bill_no": "N/A",
             "total_amount": "0",
-            "category": "Others"
+            "category": "Others",
+            "gstin": "N/A"
         }
+
 
 def check_duplicate(extracted_text, threshold=90):
     """Compare extracted text with session state invoices for duplicate detection."""
@@ -161,6 +164,27 @@ def spending_trends():
     total_spending = invoices_df['total_amount'].sum()
     st.subheader(f"Total Spending: ₹{total_spending:,.2f}")
 
+def wrap_text(text, max_width, pdf):
+    """
+    Wrap text so that each line's width is less than max_width.
+    Returns a string with newline characters inserted.
+    """
+    words = text.split(" ")
+    lines = []
+    current_line = ""
+    for word in words:
+        # Check if adding the next word exceeds the max width.
+        test_line = current_line + (" " if current_line else "") + word
+        if pdf.get_string_width(test_line) <= max_width:
+            current_line = test_line
+        else:
+            if current_line:  # Add the current line if it's not empty
+                lines.append(current_line)
+            current_line = word
+    if current_line:
+        lines.append(current_line)
+    return "\n".join(lines)
+
 def generate_invoice_pdf():
     """Generate a PDF with invoice summaries and charts."""
     progress_bar = st.progress(0)
@@ -175,34 +199,73 @@ def generate_invoice_pdf():
     pdf.set_font("Arial", style='B', size=14)
     pdf.cell(200, 10, "Invoice Summary", ln=True, align="C")
     pdf.ln(10)
+    
+    # Calculate total sum with fallback for total_amount
     total_sum = sum(float(invoice.get("total_amount") or 0) for invoice in st.session_state.invoices)
     
     pdf.set_font("Arial", style='B', size=10)
-    col_widths = [20, 50, 30, 30, 30]
-    headers = ["Bill ID", "Store Name", "Date", "Category", "Total Amount"]
+    # Updated column widths: [Bill ID, Store Name, GSTIN, Date, Category, Total Amount]
+    col_widths = [15, 50, 42, 25, 30, 30]
+    headers = ["Bill ID", "Store Name", "GSTIN", "Date", "Category", "Total Amount"]
     progress += 10
     progress_bar.progress(progress + 10)
     time.sleep(0.5)
     
-    # Table headers
+    # Draw table headers using normal cell since they are short
     for i, header in enumerate(headers):
         pdf.cell(col_widths[i], 8, header, border=1, align="C")
     pdf.ln()
     
     pdf.set_font("Arial", size=10)
+    line_height = 5  # Height for each line of text
+    # Loop through each invoice to print rows with wrapped text.
     for invoice in st.session_state.invoices:
-        pdf.cell(col_widths[0], 8, str(invoice.get("id", "N/A")), border=1, align="C")
-        pdf.cell(col_widths[1], 8, invoice.get("store_name", "N/A"), border=1)
-        pdf.cell(col_widths[2], 8, invoice.get("date", "N/A"), border=1, align="C")
-        pdf.cell(col_widths[3], 8, invoice.get("category", "N/A"), border=1, align="C")
-        pdf.cell(col_widths[4], 8, f"{float(invoice.get('total_amount') or 0):.2f}", border=1, align="C")
-        pdf.ln()
+        # Retrieve each field with fallback
+        row_data = [
+            str(invoice.get("id") or "N/A"),
+            invoice.get("store_name") or "N/A",
+            invoice.get("gstin") or "N/A",
+            invoice.get("date") or "N/A",
+            invoice.get("category") or "N/A",
+            f"{float(invoice.get('total_amount') or 0):.2f}"
+        ]
+        
+        # Wrap text in each cell and determine maximum number of lines for the row.
+        wrapped_cells = []
+        max_lines = 1
+        for i, cell in enumerate(row_data):
+            # Subtracting a small padding from col_width if needed.
+            wrapped = wrap_text(cell, col_widths[i] - 2, pdf)
+            lines = wrapped.split("\n")
+            wrapped_cells.append(wrapped)
+            if len(lines) > max_lines:
+                max_lines = len(lines)
+        row_height = line_height * max_lines
+        
+        # Save starting X and Y positions for the row.
+        x_start = pdf.get_x()
+        y_start = pdf.get_y()
+        
+        # For each cell in the row, print the multi-line text and draw the border.
+        for i, cell in enumerate(wrapped_cells):
+            x_current = pdf.get_x()
+            # Print the cell text with multi_cell.
+            pdf.multi_cell(col_widths[i], line_height, cell, border=0)
+            # Reset position to top-left of the current cell.
+            pdf.set_xy(x_current, y_start)
+            # Draw the cell border.
+            pdf.rect(x_current, y_start, col_widths[i], row_height)
+            # Move to the next cell on the right.
+            pdf.set_xy(x_current + col_widths[i], y_start)
+        # Move cursor to the next row.
+        pdf.ln(row_height)
         progress += 5
         progress_bar.progress(progress)
     
+    # Draw total amount row
     pdf.set_font("Arial", style='B', size=10)
-    pdf.cell(sum(col_widths[:4]), 8, "Total Amount", border=1, align="R")
-    pdf.cell(col_widths[4], 8, f"{total_sum:.2f}", border=1, align="C")
+    pdf.cell(sum(col_widths[:-1]), 8, "Total Amount", border=1, align="R")
+    pdf.cell(col_widths[-1], 8, f"{total_sum:.2f}", border=1, align="C")
     pdf.ln(10)
     
     # Step 2: Add Spending Trends Charts
@@ -285,6 +348,9 @@ def generate_invoice_pdf():
     
     if os.path.exists(pdf_path):
         os.remove(pdf_path)
+
+
+
 
 def display_invoice_details(invoice_id, invoice_data):
     # Apply fallbacks for every element
