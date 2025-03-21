@@ -15,6 +15,8 @@ import time
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
+from utils import spending_trends
+
 
 # Configure APIs and credentials
 genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
@@ -121,48 +123,6 @@ def clear_session_state_data():
     st.session_state.invoices.clear()
     st.session_state.invoice_images.clear()
 
-def spending_trends():
-    # Convert invoices to a DataFrame for visualization
-    invoices_df = pd.DataFrame(st.session_state.invoices)
-    invoices_df['date'] = invoices_df['date'].astype(str).str.replace(r'\d+(st|nd|rd|th)', '', regex=True)
-    invoices_df['total_amount'] = pd.to_numeric(invoices_df['total_amount'], errors='coerce')
-    invoices_df = invoices_df.dropna(subset=['total_amount'])
-    
-    # Pie Chart: Spending by Category
-    spending_by_category = invoices_df.groupby('category').agg({'total_amount': 'sum'}).reset_index()
-    threshold = spending_by_category['total_amount'].quantile(0.05)
-    spending_by_category['category'] = spending_by_category['category'].apply(
-        lambda x: x if spending_by_category.loc[spending_by_category['category'] == x, 'total_amount'].values[0] >= threshold else 'Other'
-    )
-    spending_by_category = spending_by_category.groupby('category').agg({'total_amount': 'sum'}).reset_index()
-    plt.figure(figsize=(8, 6))
-    plt.pie(spending_by_category['total_amount'], labels=spending_by_category['category'], autopct='%1.1f%%', startangle=140)
-    plt.title("Spending by Category")
-    st.pyplot(plt)
-
-    # Line Chart: Spending Trends Over Time
-    spending_by_date = invoices_df.groupby('date').agg({'total_amount': 'sum'}).reset_index()
-    plt.figure(figsize=(10, 6))
-    plt.plot(spending_by_date['date'], spending_by_date['total_amount'], marker='o')
-    plt.title("Spending Trends Over Time")
-    plt.xlabel("Date")
-    plt.ylabel("Total Amount (₹)")
-    plt.xticks(rotation=45)
-    plt.grid(True)
-    st.pyplot(plt)
-
-    # Bar Chart: Spending by Store
-    spending_by_store = invoices_df.groupby('store_name').agg({'total_amount': 'sum'}).reset_index()
-    plt.figure(figsize=(10, 6))
-    sns.barplot(x='store_name', y='total_amount', data=spending_by_store, palette='viridis')
-    plt.title("Spending by Store")
-    plt.xlabel("Store Name")
-    plt.ylabel("Total Amount (₹)")
-    plt.xticks(rotation=45)
-    st.pyplot(plt)
-    
-    total_spending = invoices_df['total_amount'].sum()
-    st.subheader(f"Total Spending: ₹{total_spending:,.2f}")
 
 def wrap_text(text, max_width, pdf):
     """
@@ -269,7 +229,8 @@ def generate_invoice_pdf():
     pdf.ln(10)
     
     # Step 2: Add Spending Trends Charts
-    spending_trends()
+    pie_chart_path, line_chart_path, bar_chart_path = spending_trends(silent=True)# Call the function with silent=True for no display 
+
     invoice_df = pd.DataFrame(st.session_state.invoices)
     invoice_df['total_amount'] = pd.to_numeric(invoice_df['total_amount'], errors='coerce')
     spending_by_category = invoice_df.groupby('category').agg({'total_amount': 'sum'}).reset_index()
@@ -475,8 +436,6 @@ if st.button("Sum of All Invoices"):
     total_sum = calculate_total_amount()
     st.success(f"💰 Total sum of all invoices: ₹{total_sum:.2f}")
 
-if st.button("Analyze Spending Trends"):
-    spending_trends()
 
 if st.button("Clear All Data (Invoices & Images)"):
     clear_session_state_data()
