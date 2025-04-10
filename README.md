@@ -76,15 +76,20 @@ Detect suspicious reimbursement claims
 **📌 Future Enhancements**
 
 ☁️ Cloud integration for invoice storage
+
 🤖 Predictive analytics for expense forecasting
+
 📱 Mobile-friendly interface
+
 🧠 Advanced fake bill detection
 
 
 **🛡️ Security & Privacy**
 
 API keys handled via environment variables
+
 No external database — invoice data lives in memory
+
 No sensitive info stored or transmitted
 
 
@@ -93,9 +98,13 @@ No sensitive info stored or transmitted
 Want to improve the project?
 
 Bug reports, feature suggestions, and PRs are welcome!
+
 Fork this repo
+
 Create a new branch
+
 Make changes and commit
+
 Submit a pull request
 
 
