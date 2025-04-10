@@ -73,20 +73,22 @@ Generate monthly or quarterly invoice summary PDFs
 Detect suspicious reimbursement claims
 
 **📌 Future Enhancements**
+
 ☁️ Cloud integration for invoice storage
-
 🤖 Predictive analytics for expense forecasting
-
 📱 Mobile-friendly interface
-
 🧠 Advanced fake bill detection
 
+
 **🛡️ Security & Privacy**
+
 API keys handled via environment variables
 No external database — invoice data lives in memory
 No sensitive info stored or transmitted
 
+
 **🤝 Contributing**
+
 Want to improve the project?
 
 Bug reports, feature suggestions, and PRs are welcome!
@@ -95,5 +97,5 @@ Create a new branch
 Make changes and commit
 Submit a pull request
 
-🙋‍♂️ Author
-Built with ❤️ by Shinas O M
+
+**Built with ❤️ by Shinas O M**
