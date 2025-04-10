@@ -73,6 +73,8 @@ Generate monthly or quarterly invoice summary PDFs
 
 Detect suspicious reimbursement claims
 
+---
+
 **📌 Future Enhancements**
 
 ☁️ Cloud integration for invoice storage
@@ -83,6 +85,7 @@ Detect suspicious reimbursement claims
 
 🧠 Advanced fake bill detection
 
+---
 
 **🛡️ Security & Privacy**
 
@@ -91,6 +94,8 @@ API keys handled via environment variables
 No external database — invoice data lives in memory
 
 No sensitive info stored or transmitted
+
+---
 
 
 **🤝 Contributing**
@@ -107,5 +112,6 @@ Make changes and commit
 
 Submit a pull request
 
+---
 
 **Built with ❤️ by Shinas O M**
