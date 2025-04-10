@@ -64,6 +64,7 @@ The system uses **AI-powered text extraction**, detects **duplicate invoices via
 
 
 **📈 Sample Use Cases**
+
 Automate receipt tracking for freelancers & consultants
 
 Analyze company expenses and vendor costs
