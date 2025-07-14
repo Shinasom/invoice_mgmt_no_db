@@ -4,6 +4,7 @@ import seaborn as sns
 import streamlit as st
 import tempfile
 
+
 def spending_trends(silent=False):
     """
     Generates charts based on invoice data from st.session_state.invoices.
