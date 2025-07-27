@@ -1,0 +1,23 @@
+# Ignore Python virtual environment
+venv/
+.venv/
+
+# Ignore Python cache
+__pycache__/
+*.pyc
+
+# Ignore IDE and OS files
+.vscode/
+.idea/
+.DS_Store
+
+# Ignore Git directory
+.git/
+
+# CRITICAL: Ignore Streamlit secrets and local config
+secrets.toml
+.streamlit/
+
+my-credentials.json
+
+.env 
