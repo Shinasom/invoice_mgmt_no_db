@@ -1,1 +1,5 @@
+<<<<<<< HEAD
 poppler-utils
+=======
+poppler-utils
+>>>>>>> f6db6249f44dc85188b1a8210287ca895249bcbc

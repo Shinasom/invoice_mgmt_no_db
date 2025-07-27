@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 streamlit
 pandas
 streamlit-aggrid
@@ -12,3 +13,22 @@ python-Levenshtein
 google-cloud-vision
 google-auth
 google-auth-oauthlib
+=======
+streamlit
+Pillow
+pdf2image
+fuzzywuzzy
+python-Levenshtein
+pytesseract
+google-generativeai
+google-cloud-vision
+google-auth
+google-auth-oauthlib
+fpdf
+numpy
+requests
+pandas
+matplotlib
+seaborn
+streamlit-aggrid
+>>>>>>> f6db6249f44dc85188b1a8210287ca895249bcbc
