@@ -2,7 +2,7 @@
 
 An AI-powered Streamlit web app for automating the extraction, verification, visualization, and analysis of invoice data. Built with modern data science tools, this project aims to eliminate manual invoice tracking, detect duplicates, and provide actionable financial insights for individuals and businesses.
 
-🔗 **[Live Demo][(https://invoicemanagmentnodb.streamlit.app/](https://invoice-management-system-988462727259.us-central1.run.app/))**
+🔗 **[Live Demo](https://invoice-management-system-988462727259.us-central1.run.app/)**
 
 ---
 
